@@ -92,6 +92,37 @@ def build_body(task):
     return "\n".join(lines)
 
 
+def detect_circular_deps(tasks):
+    """检测循环依赖，返回第一个环链（如 [2,3,2]）或 None。dependencies 为 1-based 任务序号。"""
+    n = len(tasks)
+    graph = {i + 1: [d for d in (tasks[i].get("dependencies") or [])
+                    if isinstance(d, int) and 1 <= d <= n] for i in range(n)}
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {k: WHITE for k in graph}
+    stack = []
+
+    def dfs(u):
+        color[u] = GRAY
+        stack.append(u)
+        for v in graph[u]:
+            if color.get(v, BLACK) == GRAY:
+                return stack[stack.index(v):] + [v]
+            if color.get(v, WHITE) == WHITE:
+                r = dfs(v)
+                if r:
+                    return r
+        stack.pop()
+        color[u] = BLACK
+        return None
+
+    for k in graph:
+        if color[k] == WHITE:
+            r = dfs(k)
+            if r:
+                return r
+    return None
+
+
 def main():
     import argparse
     p = argparse.ArgumentParser()
@@ -140,8 +171,17 @@ def main():
         if isinstance(r, list):
             label_id = {l["name"]: l["id"] for l in r}
 
-    print(f"\n=== Step 3: 创建 {len(data.get('tasks',[]))} 个 Issue ===")
     tasks = data.get("tasks", [])
+
+    # 预检测循环依赖（发布前拦截，避免发出半残结果）
+    cycle = detect_circular_deps(tasks)
+    if cycle:
+        chain = " → ".join(f"#{c}({tasks[c-1].get('title','?')})" for c in cycle)
+        print(f"\n[ERROR] 检测到循环依赖：{chain}")
+        print("任务互相依赖无法完成，请修正 tasks.json 的 dependencies 后重试。")
+        sys.exit(1)
+
+    print(f"\n=== Step 3: 创建 {len(tasks)} 个 Issue ===")
     issue_map = {}
     for i, t in enumerate(tasks):
         title = f"[{t.get('type','backend')}] {t.get('title','Untitled')}"
@@ -150,16 +190,26 @@ def main():
             print(f"  [{i+1}] {title} → {t.get('assignee') or 'unassigned'}"); continue
         want_labels = [t.get("type","backend"), f"priority:{t.get('priority','medium')}"]
         label_ids = [label_id[n] for n in want_labels if n in label_id]
-        payload = {"title": title, "body": body,
-                   "assignees": [t["assignee"]] if t.get("assignee") else []}
+        # 先不带 assignee 建 issue（保证任务落地），再单独指派（指派人无效也不丢任务）
+        payload = {"title": title, "body": body}
         if ms_id is not None:
             payload["milestone"] = ms_id
         if label_ids:
             payload["labels"] = label_ids
         s, r = api("POST", f"{base_api}/repos/{repo}/issues", token, payload)
         if s == 201 and isinstance(r, dict) and "number" in r:
-            issue_map[i+1] = r["number"]
-            print(f"  #{r['number']} {title}" + (f" → {t['assignee']}" if t.get('assignee') else ""))
+            num = r["number"]
+            issue_map[i+1] = num
+            assignee = t.get("assignee")
+            if assignee:
+                s2, _ = api("PATCH", f"{base_api}/repos/{repo}/issues/{num}", token,
+                            {"assignees": [assignee]})
+                if s2 in (200, 201):
+                    print(f"  #{num} {title} → {assignee}")
+                else:
+                    print(f"  #{num} {title}  ⚠️ 指派 {assignee} 失败(HTTP {s2})，issue 已建未指派，请手动处理")
+            else:
+                print(f"  #{num} {title}")
         else:
             print(f"  [FAIL {s}] {title}: {str(r)[:100]}")
 
