@@ -38,23 +38,25 @@ tea --version
 
 **如果未安装，提供安装指引：**
 
-```bash
-# 方式 1：Go install（需要 Go 环境）
-go install code.gitea.io/tea@latest
+> ⚠️ **必须固定 v0.12.0**：`@latest` 会错误拉到命令残缺的 v1.3.3；v0.14.1/v0.13.0 需 Go≥1.26 且在 Win10 启动即 hang。team-* 脚本也基于 v0.12.0 调试。
 
-# 方式 2：直接下载二进制
-# 访问 https://gitea.com/gitea/tea/releases 下载对应平台的二进制
-# Windows: tea-0.14.1-windows-amd64.exe → 重命名为 tea.exe 放入 PATH
-# Linux:   tea-0.14.1-linux-amd64 → chmod +x → 放入 /usr/local/bin/
+```bash
+# 方式 1：Go install（需要 Go 环境）—— 显式 @v0.12.0
+go install code.gitea.io/tea@v0.12.0
+
+# 方式 2：下载 v0.12.0 二进制
+# https://gitea.com/gitea/tea/releases/download/v0.12.0/tea-0.12.0-windows-amd64.exe
+# Windows: 重命名为 tea.exe 放入 PATH
+# Linux:   tea-0.12.0-linux-amd64 → chmod +x → 放入 /usr/local/bin/
 ```
 
 验证：
 ```bash
 tea --version
-# 期望输出类似：tea version 0.14.1
+# 期望输出：Version: 0.12.0
 ```
 
-**版本要求：** >= 0.12.0（需要 `tea api` 和 JSON 输出支持）
+**版本要求：** 固定 0.12.0（Win10 可用上限；其 `tea api` POST 有 bug，team-* 脚本已改 urllib 直连 Gitea API 绕过）
 
 ### Step 2：检测已有登录配置
 
@@ -98,6 +100,8 @@ tea whoami
 4. Token 名称：`tea-cli`
 5. 权限：至少勾选 `issue`、`repository`、`organization`（建议全选）
 6. 复制生成的 Token（只显示一次）
+
+> 🔒 **Token 安全**：token 经 `tea login add` 存入 tea config 后**只保留在那里**——不要复制到 md 文档、CLAUDE.md、聊天记录或代码仓库。所有 team-* 脚本都从 tea config 自动读取，无需任何地方明文记录。若怀疑泄露，立即在 Gitea 轮换。
 
 ### Step 4：检测当前仓库
 
@@ -164,8 +168,8 @@ tea issues close {N} --repo {owner}/{repo}
 可以开始使用 /team-decompose
 
 配置信息保存位置:
-  tea 配置: ~/.config/tea/config (Linux/Mac)
-            %APPDATA%\tea\config (Windows)
+  tea 配置: ~/.config/tea/config.yml (Linux/Mac)
+            %LOCALAPPDATA%\tea\config.yml (Windows，注意是 Local 不是 Roaming)
 ============================================
 ```
 
@@ -212,15 +216,15 @@ where tea          # Windows
 
 **Windows 上 tea 配置位置**
 ```
-%APPDATA%\tea\config
-# 通常在 C:\Users\{username}\AppData\Roaming\tea\config
+%LOCALAPPDATA%\tea\config.yml
+# C:\Users\{username}\AppData\Local\tea\config.yml（Local 不是 Roaming，文件名带 .yml）
 ```
 
-**tea version 过低**
+**tea 版本不对（@latest 拉到 v1.3.3 / 0.14.1 启动 hang）**
 ```bash
-# 更新到最新版
-go install code.gitea.io/tea@latest
-# 或重新下载最新二进制
+# 必须固定 v0.12.0
+go install code.gitea.io/tea@v0.12.0
+# 或下载 v0.12.0 二进制：https://gitea.com/gitea/tea/releases/download/v0.12.0/
 ```
 </troubleshooting>
 
